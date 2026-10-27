@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Morrow Tech{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="market-strip"><span>Welcome to Morrow Tech</span><span>Free shipping over $75</span><span>Today's
+            deals</span><span>Help center</span></div>
+    <header class="site-header">
+        <a class="brand" href="{{ url_for('storefront') }}"><span class="brand-mark">M</span><span>Morrow Tech
+                <small>Marketplace</small></span></a>
+        <form class="market-search" action="{{ url_for('storefront') }}#shop"><input name="q"
+                placeholder="Search products, brands and more"><button type="submit" aria-label="Search">⌕</button>
+        </form>
+        <nav class="main-nav" aria-label="Main navigation">
+            <a href="{{ url_for('storefront') }}#shop">Deals</a>
+            <a href="{{ url_for('storefront') }}#shop">Categories</a>
+            <a href="{{ url_for('about') }}">About</a>
+            {% if current_user and current_user.role in ['admin', 'user'] %}<a class="admin-link"
+                href="{{ url_for('admin') }}">Admin desk <span>↗</span></a>{% endif %}
+        </nav>
+        <nav class="mobile-nav" aria-label="Mobile shopping navigation">
+            <a href="{{ url_for('storefront') }}#shop">Deals</a>
+            <a href="{{ url_for('storefront') }}#shop">Categories</a>
+            <a href="{{ url_for('about') }}">About</a>
+        </nav>
+        <div class="header-actions">
+            {% if current_user %}<a class="notification-link" href="{{ url_for('notifications_page') }}"
+                aria-label="View order notifications">&#128276;{% if notifications %}<b>{{ notifications|length }}</b>{%
+                endif %}</a>{% endif %}
+            {% if current_user %}<a class="header-profile" href="{{ url_for('profile') }}">{% if current_user.avatar
+                %}<img src="{{ current_user.avatar }}" alt="{{ current_user.name }} profile image">{% else %}<span>{{
+                    current_user.name[:1].upper() }}</span>{% endif %}<strong>{{ current_user.name.split(' ')[0]
+                    }}</strong></a>{% else %}<a class="header-account" href="{{ url_for('login') }}">Login</a>{% endif
+            %}
+            <button class="cart-button" type="button" data-cart-open aria-label="Open shopping bag">Cart <span
+                    data-cart-count>0</span></button>
+        </div>
+    </header>
+    {% block content %}{% endblock %}
+    <div class="toast" data-toast role="status"></div>
+    <aside class="cart-drawer" data-cart-drawer aria-hidden="true">
+        <div class="drawer-header">
+            <div><span class="eyebrow">Your selection</span>
+                <h2>Shopping bag</h2>
+            </div><button class="icon-button" data-cart-close aria-label="Close shopping bag">×</button>
+        </div>
+        <div class="cart-items" data-cart-items></div>
+        <div class="drawer-footer">
+            <div class="total-row"><span>Subtotal</span><strong data-cart-total>$0.00</strong></div><a
+                class="button button-dark button-full" href="{{ url_for('checkout') }}">Continue to checkout
+                <span>→</span></a>
+            <p class="fine-print">Shipping and taxes calculated at checkout.</p>
+        </div>
+    </aside>
+    <div class="modal-backdrop" data-checkout-modal aria-hidden="true">
+        <section class="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title"><button
+                class="icon-button modal-close" data-checkout-close aria-label="Close checkout">×</button><span
+                class="eyebrow">Almost there</span>
+            <h2 id="checkout-title">Where should we send it?</h2>
+            <form data-checkout-form><label>Full name<input name="name" required
+                        placeholder="Your name"></label><label>Email<input name="email" type="email" required
+                        placeholder="you@example.com"></label><label>Delivery address<textarea name="address" required
+                        rows="3" placeholder="Street, city, postal code"></textarea></label><p class="fine-print purchase-note">Demo purchase only. No payment is charged.</p><button
+                    class="button button-dark button-full" type="submit">Complete purchase <span>→</span></button></form>
+        </section>
+    </div>
+    <div class="modal-backdrop invoice-backdrop" data-invoice-modal aria-hidden="true">
+        <section class="checkout-modal invoice-modal" role="dialog" aria-modal="true" aria-labelledby="invoice-title">
+            <button class="icon-button modal-close" type="button" data-invoice-close aria-label="Close invoice">×</button>
+            <span class="eyebrow">Morrow Tech / Invoice</span>
+            <h2 id="invoice-title" data-invoice-title>Invoice</h2>
+            <div class="invoice-meta">
+                <div><span>Customer</span><strong data-invoice-customer></strong></div>
+                <div><span>Email</span><strong data-invoice-email></strong></div>
+                <div><span>Delivery address</span><strong data-invoice-address></strong></div>
+                <div><span>Date / status</span><strong data-invoice-date></strong></div>
+            </div>
+            <div class="invoice-items" data-invoice-items></div>
+            <div class="total-row"><span>Total</span><strong data-invoice-total></strong></div>
+            <p class="fine-print invoice-status" data-invoice-status></p>
+        </section>
+    </div>
+    <footer class="site-footer">
+        <div class="brand"><span class="brand-mark">M</span><span>Morrow Tech <small>Marketplace</small></span></div>
+        <nav class="footer-links" aria-label="Footer navigation"><a href="{{ url_for('storefront') }}#shop">Deals</a><a
+                href="{{ url_for('storefront') }}#shop">Categories</a><a href="{{ url_for('about') }}">About us</a>{% if current_user %}<a
+                href="{{ url_for('profile') }}">My account</a>{% else %}<a href="{{ url_for('login') }}">Log in</a>{%
+            endif %}</nav><span class="footer-copy">© 2026
+            Morrow Tech</span>
+    </footer>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+
+</html>

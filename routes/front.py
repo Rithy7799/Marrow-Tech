@@ -1,0 +1,230 @@
+import ast
+import json
+from pathlib import Path
+from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from urllib.parse import urlsplit
+from werkzeug.utils import secure_filename
+from store import PAGE_SIZE, UPLOAD_DIR, get_db
+
+front_bp = Blueprint("front", __name__)
+
+@front_bp.route("/")
+def storefront():
+    connection = get_db()
+    query = request.args.get("q", "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    offset = (page - 1) * PAGE_SIZE
+    if query:
+        values = tuple(f"%{query}%" for _ in range(3))
+        total = connection.execute("SELECT COUNT(*) FROM products WHERE name LIKE ? OR description LIKE ? OR category LIKE ?", values).fetchone()[0]
+        products = connection.execute("SELECT * FROM products WHERE name LIKE ? OR description LIKE ? OR category LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?", values + (PAGE_SIZE, offset)).fetchall()
+    else:
+        total = connection.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+        products = connection.execute("SELECT * FROM products ORDER BY id DESC LIMIT ? OFFSET ?", (PAGE_SIZE, offset)).fetchall()
+    categories = connection.execute("SELECT DISTINCT category FROM products ORDER BY category").fetchall()
+    connection.close()
+    return render_template("index.html", products=products, categories=categories, page=page, total_pages=(total + PAGE_SIZE - 1) // PAGE_SIZE, query=query)
+
+@front_bp.route("/about")
+def about_page():
+    return render_template("about.html")
+
+@front_bp.route("/category/<category_name>")
+def category(category_name):
+    connection = get_db()
+    page = max(request.args.get("page", 1, type=int), 1)
+    offset = (page - 1) * PAGE_SIZE
+    total = connection.execute("SELECT COUNT(*) FROM products WHERE category = ?", (category_name,)).fetchone()[0]
+    products = connection.execute("SELECT * FROM products WHERE category = ? ORDER BY id DESC LIMIT ? OFFSET ?", (category_name, PAGE_SIZE, offset)).fetchall()
+    categories = connection.execute("SELECT DISTINCT category FROM products ORDER BY category").fetchall()
+    connection.close()
+    return render_template("category.html", products=products, categories=categories, category_name=category_name, page=page, total_pages=(total + PAGE_SIZE - 1) // PAGE_SIZE)
+
+@front_bp.route("/product/<int:product_id>")
+def product_detail(product_id):
+    connection = get_db()
+    product = connection.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    reviews = connection.execute("SELECT reviews.*, users.name FROM reviews JOIN users ON users.id = reviews.user_id WHERE product_id = ? ORDER BY reviews.id DESC", (product_id,)).fetchall()
+    recommendations = connection.execute("SELECT * FROM products WHERE category = ? AND id != ? ORDER BY id DESC LIMIT 4", (product["category"], product_id)).fetchall() if product else []
+    is_favorite = bool(session.get("user") and connection.execute("SELECT 1 FROM favorites WHERE user_id = ? AND product_id = ?", (session["user"]["id"], product_id)).fetchone())
+    connection.close()
+    if not product:
+        return redirect(url_for("front.storefront"))
+    average = round(sum(review["rating"] for review in reviews) / len(reviews), 1) if reviews else 0
+    return render_template("product.html", product=product, reviews=reviews, recommendations=recommendations, average=average, is_favorite=is_favorite)
+
+@front_bp.route("/checkout")
+def checkout():
+    if not session.get("user"):
+        next_url = request.full_path if request.query_string else request.path
+        return redirect(url_for("auth.login", next=next_url))
+    buy_now_product = None
+    connection = get_db()
+    account = connection.execute("SELECT address FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    saved_address = account["address"] if account and account["address"] else ""
+    if "buy_now" in request.args:
+        product_id = request.args.get("buy_now", type=int)
+        if not product_id:
+            connection.close()
+            return redirect(url_for("front.storefront"))
+        product = connection.execute("SELECT id, name, price FROM products WHERE id = ?", (product_id,)).fetchone()
+        if not product:
+            connection.close()
+            return redirect(url_for("front.storefront"))
+        buy_now_product = dict(product)
+    connection.close()
+    return render_template("checkout.html", buy_now_product=buy_now_product, saved_address=saved_address)
+
+@front_bp.route("/profile")
+def profile():
+    if not session.get("user"):
+        return redirect(url_for("auth.login"))
+    connection = get_db()
+    account = connection.execute("SELECT * FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    orders = connection.execute("SELECT * FROM orders WHERE email = ? ORDER BY id DESC", (session["user"]["email"],)).fetchall()
+    favorites = connection.execute("SELECT products.* FROM favorites JOIN products ON products.id = favorites.product_id WHERE favorites.user_id = ?", (session["user"]["id"],)).fetchall()
+    connection.close()
+    return render_template("profile.html", account=account, orders=orders, favorites=favorites)
+
+@front_bp.route("/notifications")
+def notifications_page():
+    if not session.get("user"):
+        return redirect(url_for("auth.login"))
+    connection = get_db()
+    orders = connection.execute("SELECT * FROM orders WHERE email = ? ORDER BY id DESC", (session["user"]["email"],)).fetchall()
+    connection.close()
+    return render_template("notifications.html", orders=orders)
+
+@front_bp.get("/api/orders/<int:order_id>")
+def order_invoice(order_id):
+    user = session.get("user")
+    if not user:
+        return jsonify({"error": "Please log in to view this invoice."}), 401
+    connection = get_db()
+    order = connection.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    connection.close()
+    if not order or (user.get("role") not in {"admin", "user"} and order["email"] != user["email"]):
+        return jsonify({"error": "Invoice not found."}), 404
+    try:
+        items = ast.literal_eval(order["items"])
+    except (ValueError, SyntaxError):
+        try:
+            items = json.loads(order["items"])
+        except (TypeError, ValueError):
+            items = []
+    if not isinstance(items, list):
+        items = []
+    invoice_items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            quantity = int(item.get("quantity", 1))
+            price = float(item.get("price", 0))
+        except (TypeError, ValueError):
+            continue
+        if quantity < 1:
+            continue
+        invoice_items.append({"name": str(item.get("name", "Item")), "quantity": quantity, "price": price})
+    return jsonify({
+        "id": order["id"],
+        "customer_name": order["customer_name"],
+        "email": order["email"],
+        "address": order["address"],
+        "created_at": order["created_at"],
+        "status": order["status"],
+        "total": order["total"],
+        "items": invoice_items,
+    })
+
+@front_bp.post("/profile/update")
+def update_profile():
+    if not session.get("user"):
+        return redirect(url_for("auth.login"))
+    connection = get_db()
+    existing = connection.execute("SELECT * FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    avatar = request.form.get("avatar", existing["avatar"] or "").strip()
+    profile_image = request.files.get("profile_image")
+    if profile_image and profile_image.filename:
+        extension = Path(profile_image.filename).suffix.lower()
+        if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+            connection.close()
+            return "Unsupported profile image format.", 400
+        filename = secure_filename(f"user-{session['user']['id']}-profile{extension}")
+        profile_image.save(UPLOAD_DIR / filename)
+        avatar = url_for("static", filename=f"uploads/{filename}")
+    connection.execute("UPDATE users SET name = ?, email = ?, phone = ?, address = ?, avatar = ?, card_name = ?, card_last4 = ?, card_expiry = ? WHERE id = ?", (name, email, request.form.get("phone", existing["phone"] or "").strip(), request.form.get("address", existing["address"] or "").strip(), avatar, request.form.get("card_name", existing["card_name"] or "").strip(), existing["card_last4"], request.form.get("card_expiry", existing["card_expiry"] or "").strip(), session["user"]["id"]))
+    connection.commit()
+    connection.close()
+    session["user"].update({"name": name, "email": email})
+    return redirect(url_for("front.profile"))
+
+@front_bp.post("/product/<int:product_id>/favorite")
+def toggle_favorite(product_id):
+    if not session.get("user"):
+        return redirect(url_for("auth.login"))
+    connection = get_db()
+    existing = connection.execute("SELECT 1 FROM favorites WHERE user_id = ? AND product_id = ?", (session["user"]["id"], product_id)).fetchone()
+    connection.execute("DELETE FROM favorites WHERE user_id = ? AND product_id = ?", (session["user"]["id"], product_id)) if existing else connection.execute("INSERT INTO favorites (user_id, product_id) VALUES (?, ?)", (session["user"]["id"], product_id))
+    connection.commit()
+    connection.close()
+    return redirect(request.referrer or url_for("front.product_detail", product_id=product_id))
+
+@front_bp.post("/product/<int:product_id>/review")
+def add_review(product_id):
+    if not session.get("user"):
+        return redirect(url_for("auth.login"))
+    connection = get_db()
+    connection.execute("INSERT INTO reviews (user_id, product_id, rating, comment, created_at) VALUES (?, ?, ?, ?, datetime('now'))", (session["user"]["id"], product_id, max(1, min(5, int(request.form.get("rating", 5)))), request.form.get("comment", "").strip()))
+    connection.commit()
+    connection.close()
+    return redirect(url_for("front.product_detail", product_id=product_id))
+
+@front_bp.post("/api/orders")
+@front_bp.post("/api/purchases")
+def create_order():
+    if not session.get("user"):
+        referring_page = urlsplit(request.referrer or "")
+        next_url = referring_page.path if referring_page.path.startswith("/") and not referring_page.path.startswith("//") else url_for("front.checkout")
+        if referring_page.query:
+            next_url += f"?{referring_page.query}"
+        return jsonify({"error": "Please log in before buying.", "login_url": url_for("auth.login", next=next_url)}), 401
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Please provide valid purchase details."}), 400
+    customer, items = payload.get("customer"), payload.get("items")
+    if not isinstance(customer, dict) or not isinstance(items, list) or not items or len(items) > 100:
+        return jsonify({"error": "Please provide contact details and a valid bag."}), 400
+    customer = {field: customer.get(field, "").strip() if isinstance(customer.get(field), str) else "" for field in ("name", "email", "address")}
+    if not all(customer.values()) or "@" not in customer["email"]:
+        return jsonify({"error": "Please provide a name, valid email, and delivery address."}), 400
+
+    quantities = {}
+    for item in items:
+        if not isinstance(item, dict):
+            return jsonify({"error": "Your bag contains an invalid item."}), 400
+        product_id, quantity = item.get("id"), item.get("quantity")
+        if (not isinstance(product_id, int) or isinstance(product_id, bool) or product_id < 1
+                or not isinstance(quantity, int) or isinstance(quantity, bool) or not 1 <= quantity <= 99):
+            return jsonify({"error": "Your bag contains an invalid item quantity."}), 400
+        quantities[product_id] = quantities.get(product_id, 0) + quantity
+        if quantities[product_id] > 99:
+            return jsonify({"error": "Your bag contains an invalid item quantity."}), 400
+
+    connection = get_db()
+    product_ids = list(quantities)
+    placeholders = ",".join("?" for _ in product_ids)
+    products = connection.execute(f"SELECT id, name, price FROM products WHERE id IN ({placeholders})", product_ids).fetchall()
+    products_by_id = {product["id"]: product for product in products}
+    if len(products_by_id) != len(product_ids):
+        connection.close()
+        return jsonify({"error": "A product in your bag is no longer available."}), 400
+    purchase_items = [{"id": product_id, "name": products_by_id[product_id]["name"], "quantity": quantity, "price": products_by_id[product_id]["price"]} for product_id, quantity in quantities.items()]
+    total = round(sum(item["price"] * item["quantity"] for item in purchase_items), 2)
+    cursor = connection.execute("INSERT INTO orders (customer_name, email, address, items, total, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", (customer["name"], customer["email"], customer["address"], str(purchase_items), total))
+    connection.commit()
+    purchase_id = cursor.lastrowid
+    connection.close()
+    return jsonify({"purchase_id": purchase_id, "total": total, "message": f"Purchase #{purchase_id} confirmed for ${total:,.2f}. Demo only; no payment was charged."})
