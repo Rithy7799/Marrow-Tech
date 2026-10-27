@@ -2636,7 +2636,9 @@ select:focus {
     }
 
     .mobile-nav a {
-        width: 33.333%;
+        flex: 1 1 0;
+        min-width: 0;
+        width: auto;
         text-align: center;
         color: var(--market-green-dark);
         font-size: 11px;
@@ -3511,5 +3513,21 @@ select {
     .category-create-form .button {
         flex: 0 0 auto;
         justify-content: center
+    }
+}
+/* Mobile header: show the admin desk link for staff accounts */
+@media(max-width:650px) {
+    .mobile-nav {
+        gap: 0
+    }
+
+    .mobile-nav a {
+        white-space: nowrap;
+        padding: 0 2px
+    }
+
+    .mobile-nav .mobile-admin-link {
+        color: var(--market-green);
+        font-weight: 800
     }
 }
