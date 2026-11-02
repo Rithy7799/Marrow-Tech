@@ -2,7 +2,7 @@
 {% block title %}{{ category_name }} — Morrow Goods{% endblock %}
 {% block content %}<main class="listing-page">
     <div class="listing-heading"><span class="eyebrow">Browse / category</span>
-        <h1 style="font-size: 64px;">{{ category_name }} <em>pieces.</em></h1>
+        <h1>{{ category_name }} <em>pieces.</em></h1>
         <p>{{ products|length }} products on this page.</p>
     </div>
     <div class="category-row category-links"><a class="filter-button" href="{{ url_for('storefront') }}#shop">All

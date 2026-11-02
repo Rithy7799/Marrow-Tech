@@ -10,6 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     {% block head %}{% endblock %}
 </head>
@@ -35,11 +36,20 @@
                 href="{{ url_for('admin') }}">Admin desk <span>↗</span></a>{% endif %}
         </nav>
         <nav class="mobile-nav" aria-label="Mobile shopping navigation">
-            <a href="{{ url_for('storefront') }}#shop">Deals</a>
-            <a href="{{ url_for('storefront') }}#shop">Categories</a>
-            <a href="{{ url_for('about') }}">About</a>
+            <a href="{{ url_for('storefront') }}#shop">
+                <i class="nav-icon bi bi-house-fill" aria-hidden="true"></i>
+                <span>Deals</span>
+            </a>
+            <a href="{{ url_for('storefront') }}#shop">
+                <i class="nav-icon bi bi-grid-fill" aria-hidden="true"></i>
+                <span>Categories</span>
+            </a>
+            <a href="{{ url_for('about') }}">
+                <i class="nav-icon bi bi-info-circle-fill" aria-hidden="true"></i>
+                <span>About</span>
+            </a>
             {% if current_user and current_user.role in ['admin', 'user'] %}<a class="mobile-admin-link"
-                href="{{ url_for('admin') }}">Admin</a>{% endif %}
+                href="{{ url_for('admin') }}"><i class="nav-icon bi bi-shield-lock-fill" aria-hidden="true"></i><span>Admin</span></a>{% endif %}
         </nav>
         <div class="header-actions">
             {% if current_user %}<a class="notification-link" href="{{ url_for('notifications_page') }}"

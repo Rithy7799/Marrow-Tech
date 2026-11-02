@@ -2775,8 +2775,11 @@ select:focus {
 
 @media(max-width:650px) {
     .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 8;
         grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas: "brand actions" "search search" "mobile mobile";
+        grid-template-areas: "brand actions" "search search";
         padding-bottom: 10px
     }
 
@@ -2832,27 +2835,47 @@ select:focus {
     }
 
     .mobile-nav {
-        grid-area: mobile;
-        display: flex;
-        justify-content: center;
+        position: fixed;
+        z-index: 9;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+        align-items: stretch;
         gap: 0;
         border-top: 1px solid var(--line);
-        padding-top: 9px;
-        margin-top: 2px
+        padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+        margin: 0;
+        background: #fff;
+        box-shadow: 0 -4px 16px rgba(18, 53, 42, .08)
     }
 
     .mobile-nav a {
-        flex: 1 1 0;
         min-width: 0;
-        width: auto;
-        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 4px 2px;
         color: var(--market-green-dark);
-        font-size: 11px;
-        font-weight: 700
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.2
     }
 
     .mobile-nav a+a {
-        border-left: 1px solid var(--line)
+        border-left: 0
+    }
+
+    .mobile-nav .nav-icon {
+        font-size: 20px;
+        line-height: 1
+    }
+
+    body {
+        padding-bottom: calc(68px + env(safe-area-inset-bottom))
     }
 }
 
@@ -3848,5 +3871,81 @@ select {
     .market-search button:focus-visible {
         outline: 2px solid var(--market-green);
         outline-offset: 2px
+    }
+}
+
+@media (min-width:651px) and (max-width:900px) {
+    .site-header {
+        height: auto;
+        min-height: 120px;
+        padding: 14px 24px 10px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "brand actions"
+            "search search"
+            "mobile mobile";
+        gap: 10px 16px
+    }
+
+    .site-header .brand {
+        grid-area: brand
+    }
+
+    .site-header .market-search {
+        grid-area: search;
+        width: 100%;
+        max-width: none
+    }
+
+    .site-header .main-nav {
+        display: none
+    }
+
+    .header-actions {
+        grid-area: actions;
+        gap: 10px
+    }
+
+    .mobile-nav {
+        grid-area: mobile;
+        display: flex;
+        justify-content: center;
+        gap: 0;
+        border-top: 1px solid var(--line);
+        padding-top: 9px
+    }
+
+    .mobile-nav a {
+        flex: 1 1 0;
+        min-width: 0;
+        text-align: center;
+        color: var(--market-green-dark);
+        font-size: 12px;
+        font-weight: 700
+    }
+
+    .mobile-nav a+a {
+        border-left: 1px solid var(--line)
+    }
+}
+
+@media (max-width:900px) {
+    .category-row {
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap
+    }
+
+    .category-row .filter-button {
+        flex: 0 0 auto
+    }
+}
+
+@media (max-width:760px) {
+    .listing-heading h1 {
+        font-size: clamp(2.125rem, 8vw, 3.75rem);
+        overflow-wrap: anywhere
     }
 }
