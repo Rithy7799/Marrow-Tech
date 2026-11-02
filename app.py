@@ -17,6 +17,7 @@ if production and not secret_key:
     raise RuntimeError("SECRET_KEY must be configured when APP_ENV=production.")
 
 app = Flask(__name__)
+application = app
 app.config.update(
     SECRET_KEY=secret_key or "morrow-development-key",
     SESSION_COOKIE_HTTPONLY=True,

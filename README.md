@@ -71,7 +71,7 @@ Demo data is disabled when `APP_ENV=production`.
 
 ## Production Deployment
 
-The included `Procfile` runs the app with Gunicorn on a Linux host or platform that supports Procfiles. Configure these environment variables in the host's dashboard:
+The app exposes its WSGI callable as `app:application` for WSGI servers. The included `Procfile` runs it with Gunicorn on a Linux host or platform that supports Procfiles. Configure these environment variables in the host's dashboard:
 
 - `APP_ENV=production`
 - `SECRET_KEY` — a long, random value. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` and keep it out of source control.
