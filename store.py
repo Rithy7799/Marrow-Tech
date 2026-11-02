@@ -1,12 +1,13 @@
-from datetime import datetime
+import os
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from flask import render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
 
 BASE_DIR = Path(__file__).parent
-DATABASE = BASE_DIR / "shop.db"
+DATABASE = Path(os.environ.get("DATABASE_PATH", str(BASE_DIR / "shop.db"))).expanduser()
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 PAGE_SIZE = 20
 DEMO_ADMIN_EMAIL = "admin@morrow.test"
@@ -30,21 +31,38 @@ SEED_PRODUCTS = [
 
 
 def get_db():
+    DATABASE.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE)
     connection.row_factory = sqlite3.Row
     return connection
 
 
 def init_db():
+    seed_setting = os.environ.get("SEED_DEMO_DATA")
+    production = os.environ.get("APP_ENV", "development").strip().lower() == "production"
+    if production and not os.environ.get("DATABASE_PATH"):
+        raise RuntimeError("DATABASE_PATH must point to a persistent disk when APP_ENV=production.")
+    if production and not DATABASE.is_absolute():
+        raise RuntimeError("DATABASE_PATH must be an absolute path in production.")
+    seed_value = seed_setting.strip().lower() if seed_setting is not None else None
+    if seed_value is not None and seed_value not in {"1", "true", "yes", "0", "false", "no"}:
+        raise RuntimeError("SEED_DEMO_DATA must be set to true or false.")
+    if production and seed_value in {"1", "true", "yes"}:
+        raise RuntimeError("Demo data cannot be enabled when APP_ENV=production.")
+    seed_demo_data = not production and seed_value not in {"0", "false", "no"}
+
     connection = get_db()
     connection.executescript("""
         CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT NOT NULL, category TEXT NOT NULL, price REAL NOT NULL, color TEXT NOT NULL, initials TEXT NOT NULL, created_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT NOT NULL, email TEXT NOT NULL, address TEXT NOT NULL, items TEXT NOT NULL, total REAL NOT NULL, status TEXT NOT NULL DEFAULT 'New', created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_name TEXT NOT NULL, email TEXT NOT NULL, address TEXT NOT NULL, items TEXT NOT NULL, total REAL NOT NULL, status TEXT NOT NULL DEFAULT 'New', payment_method TEXT NOT NULL DEFAULT 'unrecorded', created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS favorites (user_id INTEGER NOT NULL, product_id INTEGER NOT NULL, PRIMARY KEY (user_id, product_id));
         CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, product_id INTEGER NOT NULL, rating INTEGER NOT NULL, comment TEXT NOT NULL, created_at TEXT NOT NULL);
     """)
     connection.execute("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL)")
+    order_columns = {row[1] for row in connection.execute("PRAGMA table_info(orders)").fetchall()}
+    if "payment_method" not in order_columns:
+        connection.execute("ALTER TABLE orders ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'unrecorded'")
     product_columns = {row[1] for row in connection.execute("PRAGMA table_info(products)").fetchall()}
     for column in ("image1", "image2", "image3"):
         if column not in product_columns:
@@ -55,7 +73,7 @@ def init_db():
             connection.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     count = connection.execute("SELECT COUNT(*) FROM products").fetchone()[0]
-    if count == 0:
+    if count == 0 and seed_demo_data:
         if not connection.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone():
             connection.execute("INSERT OR IGNORE INTO users (name, email, password, role, created_at) VALUES (?, ?, ?, ?, ?)", ("Morrow Admin", DEMO_ADMIN_EMAIL, generate_password_hash(DEMO_ADMIN_PASSWORD), "admin", datetime.now().isoformat(timespec="seconds")))
         if not connection.execute("SELECT 1 FROM users WHERE email = ?", (DEMO_STAFF_EMAIL,)).fetchone():
@@ -94,7 +112,7 @@ def current_user_context():
     notifications = []
     if user:
         connection = get_db()
-        account = connection.execute("SELECT id, name, email, role, avatar FROM users WHERE id = ?", (user["id"],)).fetchone()
+        account = connection.execute("SELECT id, name, email, role, avatar, card_name, card_last4, card_expiry FROM users WHERE id = ?", (user["id"],)).fetchone()
         if account:
             user = dict(account)
         notifications = connection.execute("SELECT id, total, status, created_at FROM orders WHERE email = ? ORDER BY id DESC LIMIT 5", (user["email"],)).fetchall()

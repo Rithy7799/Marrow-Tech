@@ -1,5 +1,6 @@
 import ast
 import json
+import re
 from pathlib import Path
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 from urllib.parse import urlsplit
@@ -60,20 +61,32 @@ def checkout():
         return redirect(url_for("auth.login", next=next_url))
     buy_now_product = None
     connection = get_db()
-    account = connection.execute("SELECT address FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    account = connection.execute(
+        "SELECT address, card_name, card_last4, card_expiry FROM users WHERE id = ?",
+        (session["user"]["id"],),
+    ).fetchone()
     saved_address = account["address"] if account and account["address"] else ""
+    saved_card = dict(account) if account and account["card_last4"] else None
     if "buy_now" in request.args:
         product_id = request.args.get("buy_now", type=int)
         if not product_id:
             connection.close()
             return redirect(url_for("front.storefront"))
-        product = connection.execute("SELECT id, name, price FROM products WHERE id = ?", (product_id,)).fetchone()
+        product = connection.execute(
+            "SELECT id, name, price, image1, color, initials FROM products WHERE id = ?",
+            (product_id,),
+        ).fetchone()
         if not product:
             connection.close()
             return redirect(url_for("front.storefront"))
         buy_now_product = dict(product)
     connection.close()
-    return render_template("checkout.html", buy_now_product=buy_now_product, saved_address=saved_address)
+    return render_template(
+        "checkout.html",
+        buy_now_product=buy_now_product,
+        saved_address=saved_address,
+        saved_card=saved_card,
+    )
 
 @front_bp.route("/profile")
 def profile():
@@ -133,9 +146,28 @@ def order_invoice(order_id):
         "address": order["address"],
         "created_at": order["created_at"],
         "status": order["status"],
+        "payment_method": order["payment_method"],
         "total": order["total"],
         "items": invoice_items,
     })
+
+@front_bp.get("/api/products/images")
+def product_images():
+    try:
+        product_ids = list(dict.fromkeys(
+            int(product_id) for product_id in request.args.get("ids", "").split(",")
+        ))
+    except ValueError:
+        return jsonify({"error": "Invalid product IDs."}), 400
+    if not product_ids or len(product_ids) > 100 or any(product_id < 1 for product_id in product_ids):
+        return jsonify({"error": "Invalid product IDs."}), 400
+    placeholders = ",".join("?" for _ in product_ids)
+    connection = get_db()
+    products = connection.execute(
+        f"SELECT id, image1 FROM products WHERE id IN ({placeholders})", product_ids
+    ).fetchall()
+    connection.close()
+    return jsonify({str(product["id"]): product["image1"] for product in products if product["image1"]})
 
 @front_bp.post("/profile/update")
 def update_profile():
@@ -146,6 +178,14 @@ def update_profile():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
     avatar = request.form.get("avatar", existing["avatar"] or "").strip()
+    card_last4 = existing["card_last4"]
+    card_number = request.form.get("card_number", "").strip()
+    if card_number:
+        card_digits = re.sub(r"[^0-9]", "", card_number)
+        if not 13 <= len(card_digits) <= 19:
+            connection.close()
+            return "Enter a valid card number.", 400
+        card_last4 = card_digits[-4:]
     profile_image = request.files.get("profile_image")
     if profile_image and profile_image.filename:
         extension = Path(profile_image.filename).suffix.lower()
@@ -155,7 +195,7 @@ def update_profile():
         filename = secure_filename(f"user-{session['user']['id']}-profile{extension}")
         profile_image.save(UPLOAD_DIR / filename)
         avatar = url_for("static", filename=f"uploads/{filename}")
-    connection.execute("UPDATE users SET name = ?, email = ?, phone = ?, address = ?, avatar = ?, card_name = ?, card_last4 = ?, card_expiry = ? WHERE id = ?", (name, email, request.form.get("phone", existing["phone"] or "").strip(), request.form.get("address", existing["address"] or "").strip(), avatar, request.form.get("card_name", existing["card_name"] or "").strip(), existing["card_last4"], request.form.get("card_expiry", existing["card_expiry"] or "").strip(), session["user"]["id"]))
+    connection.execute("UPDATE users SET name = ?, email = ?, phone = ?, address = ?, avatar = ?, card_name = ?, card_last4 = ?, card_expiry = ? WHERE id = ?", (name, email, request.form.get("phone", existing["phone"] or "").strip(), request.form.get("address", existing["address"] or "").strip(), avatar, request.form.get("card_name", existing["card_name"] or "").strip(), card_last4, request.form.get("card_expiry", existing["card_expiry"] or "").strip(), session["user"]["id"]))
     connection.commit()
     connection.close()
     session["user"].update({"name": name, "email": email})
@@ -197,6 +237,9 @@ def create_order():
     customer, items = payload.get("customer"), payload.get("items")
     if not isinstance(customer, dict) or not isinstance(items, list) or not items or len(items) > 100:
         return jsonify({"error": "Please provide contact details and a valid bag."}), 400
+    payment_method = payload.get("payment_method")
+    if not isinstance(payment_method, str) or payment_method not in {"saved_card", "khqr"}:
+        return jsonify({"error": "Choose a valid payment method."}), 400
     customer = {field: customer.get(field, "").strip() if isinstance(customer.get(field), str) else "" for field in ("name", "email", "address")}
     if not all(customer.values()) or "@" not in customer["email"]:
         return jsonify({"error": "Please provide a name, valid email, and delivery address."}), 400
@@ -214,6 +257,13 @@ def create_order():
             return jsonify({"error": "Your bag contains an invalid item quantity."}), 400
 
     connection = get_db()
+    if payment_method == "saved_card":
+        saved_card = connection.execute(
+            "SELECT card_last4 FROM users WHERE id = ?", (session["user"]["id"],)
+        ).fetchone()
+        if not saved_card or not saved_card["card_last4"]:
+            connection.close()
+            return jsonify({"error": "Save a card in your profile or choose KHQR."}), 400
     product_ids = list(quantities)
     placeholders = ",".join("?" for _ in product_ids)
     products = connection.execute(f"SELECT id, name, price FROM products WHERE id IN ({placeholders})", product_ids).fetchall()
@@ -223,8 +273,16 @@ def create_order():
         return jsonify({"error": "A product in your bag is no longer available."}), 400
     purchase_items = [{"id": product_id, "name": products_by_id[product_id]["name"], "quantity": quantity, "price": products_by_id[product_id]["price"]} for product_id, quantity in quantities.items()]
     total = round(sum(item["price"] * item["quantity"] for item in purchase_items), 2)
-    cursor = connection.execute("INSERT INTO orders (customer_name, email, address, items, total, created_at) VALUES (?, ?, ?, ?, ?, datetime('now'))", (customer["name"], customer["email"], customer["address"], str(purchase_items), total))
+    cursor = connection.execute("INSERT INTO orders (customer_name, email, address, items, total, payment_method, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))", (customer["name"], customer["email"], customer["address"], str(purchase_items), total, payment_method))
     connection.commit()
     purchase_id = cursor.lastrowid
     connection.close()
-    return jsonify({"purchase_id": purchase_id, "total": total, "message": f"Purchase #{purchase_id} confirmed for ${total:,.2f}. Demo only; no payment was charged."})
+    payment_label = "saved card" if payment_method == "saved_card" else "KHQR"
+    return jsonify({
+        "purchase_id": purchase_id,
+        "total": total,
+        "message": (
+            f"Order #{purchase_id} recorded for ${total:,.2f} with {payment_label}. "
+            "Demo only; no payment was charged."
+        ),
+    })

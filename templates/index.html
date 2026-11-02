@@ -15,8 +15,24 @@
         <div class="hero-note"><span>01 — 03</span><span>Small batch<br>essentials</span></div>
     </section>
     <section class="ticker">
-        <div>GREEN WEEK SALE <span>✳</span> FREE SHIPPING OVER $75 <span>✳</span> 30-DAY RETURNS <span>✳</span> GREEN
-            WEEK SALE <span>✳</span></div>
+        <div class="ticker-track">
+            <div class="ticker-group">
+                <span class="ticker-item">GREEN WEEK SALE</span><span class="ticker-separator" aria-hidden="true">✳</span>
+                <span class="ticker-item">FREE SHIPPING OVER $75</span><span class="ticker-separator" aria-hidden="true">✳</span>
+                <span class="ticker-item">30-DAY RETURNS</span><span class="ticker-separator" aria-hidden="true">✳</span>
+                <span class="ticker-item" aria-hidden="true">GREEN WEEK SALE</span><span class="ticker-separator" aria-hidden="true">✳</span>
+                <span class="ticker-item" aria-hidden="true">FREE SHIPPING OVER $75</span><span class="ticker-separator" aria-hidden="true">✳</span>
+                <span class="ticker-item" aria-hidden="true">30-DAY RETURNS</span><span class="ticker-separator" aria-hidden="true">✳</span>
+            </div>
+            <div class="ticker-group" aria-hidden="true">
+                <span class="ticker-item">GREEN WEEK SALE</span><span class="ticker-separator">✳</span>
+                <span class="ticker-item">FREE SHIPPING OVER $75</span><span class="ticker-separator">✳</span>
+                <span class="ticker-item">30-DAY RETURNS</span><span class="ticker-separator">✳</span>
+                <span class="ticker-item">GREEN WEEK SALE</span><span class="ticker-separator">✳</span>
+                <span class="ticker-item">FREE SHIPPING OVER $75</span><span class="ticker-separator">✳</span>
+                <span class="ticker-item">30-DAY RETURNS</span><span class="ticker-separator">✳</span>
+            </div>
+        </div>
     </section>
     <section class="shop-section" id="shop">
         <div class="section-heading">
@@ -44,21 +60,13 @@
                 </div>
                 <div class="product-card-actions">
                     <p>{{ product.description }}</p><button class="add-button"
-                        data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials}|tojson }}'
+                        data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials, "image": product.image1}|tojson }}'
                         aria-label="Add {{ product.name }} to bag">+</button>
                 </div>
             </article>{% endfor %}</div>
         <div class="pagination">{% if page > 1 %}<a href="{{ url_for('storefront', page=page - 1, q=query) }}#shop">←
                 Previous</a>{% endif %}<span>Page {{ page }} of {{ total_pages }}</span>{% if page < total_pages %}<a
                 href="{{ url_for('storefront', page=page + 1, q=query) }}#shop">Next →</a>{% endif %}</div>
-    </section>
-    <section class="manifesto">
-        <div class="manifesto-number">02</div>
-        <div><span class="eyebrow">The Morrow Tech promise</span>
-            <h2>More function, <em>less fuss.</em></h2>
-            <p>We keep the sale shelf focused on genuinely useful devices, honest specs, and prices that make upgrading
-                feel good.</p><a href="#shop" class="text-link">Browse all electronics <span>↗</span></a>
-        </div>
     </section>
 </main>
 <script>

@@ -1,12 +1,77 @@
 from datetime import datetime
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
+from uuid import uuid4
 from flask import Blueprint, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
-from werkzeug.utils import secure_filename
 from store import PAGE_SIZE, UPLOAD_DIR, admin_access_required, owner_admin_required, get_db
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+
+def product_image_inputs(form, files):
+    sources = {}
+    for slot in (1, 2, 3):
+        image = files.get(f"image{slot}")
+        has_upload = image and image.filename
+        image_url = form.get(f"image{slot}_url", "").strip()
+        if has_upload and image_url:
+            raise ValueError(f"Choose either an upload or a link for image {slot}.")
+        if image_url:
+            try:
+                parsed_url = urlsplit(image_url)
+                valid_url = (
+                    parsed_url.scheme in {"http", "https"}
+                    and bool(parsed_url.hostname)
+                    and parsed_url.username is None
+                    and parsed_url.password is None
+                    and not any(character.isspace() for character in image_url)
+                )
+                _ = parsed_url.port
+            except ValueError:
+                valid_url = False
+            if not valid_url:
+                raise ValueError(f"Image {slot} link must be a valid HTTP or HTTPS URL.")
+            sources[slot] = ("url", image_url)
+        elif has_upload:
+            extension = Path(image.filename).suffix.lower()
+            if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+                raise ValueError(f"Image {slot} must be a PNG, JPEG, or WebP file.")
+            sources[slot] = ("upload", image, extension)
+    return sources
+
+
+def remove_unreferenced_product_image(image_url, connection, product_id, slot):
+    if not image_url:
+        return
+    parsed_url = urlsplit(image_url)
+    image_path = PurePosixPath(parsed_url.path)
+    filename = image_path.name
+    if (
+        parsed_url.scheme
+        or parsed_url.netloc
+        or image_path.parent != PurePosixPath("/static/uploads")
+        or not (
+            filename.startswith(f"product-{product_id}-{slot}.")
+            or filename.startswith(f"product-{product_id}-{slot}-")
+        )
+    ):
+        return
+
+    referenced = connection.execute(
+        "SELECT 1 FROM products WHERE image1 = ? OR image2 = ? OR image3 = ? "
+        "UNION ALL SELECT 1 FROM users WHERE avatar = ? LIMIT 1",
+        (image_url, image_url, image_url, image_url),
+    ).fetchone()
+    if referenced:
+        return
+
+    upload_directory = UPLOAD_DIR.resolve()
+    file_path = (upload_directory / filename).resolve()
+    if file_path.parent == upload_directory:
+        file_path.unlink(missing_ok=True)
+
 
 @admin_bp.route("")
 def dashboard():
@@ -115,24 +180,55 @@ def add_product():
     if not name or not description: return redirect(url_for("admin.dashboard"))
     try: price = float(form.get("price", "0"))
     except ValueError: price = 0
+    try:
+        image_sources = product_image_inputs(form, request.files)
+    except ValueError as error:
+        return str(error), 400
     connection = get_db()
     category = form.get("category", "").strip()
     if not connection.execute("SELECT 1 FROM categories WHERE name = ?", (category,)).fetchone():
         connection.close()
         return redirect(url_for("admin.products"))
-    cursor = connection.execute("INSERT INTO products (name, description, category, price, color, initials, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (name, description, category, price, form.get("color", "#d9c7bd"), "".join(word[0] for word in name.split()[:2]).upper(), datetime.now().isoformat(timespec="seconds")))
-    product_id = cursor.lastrowid
-    images = []
-    for slot in (1, 2, 3):
-        image = request.files.get(f"image{slot}")
-        if image and image.filename and Path(image.filename).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
-            filename = secure_filename(f"product-{product_id}-{slot}{Path(image.filename).suffix.lower()}")
-            image.save(UPLOAD_DIR / filename)
-            images.append(url_for("static", filename=f"uploads/{filename}"))
-        else: images.append(None)
-    connection.execute("UPDATE products SET image1 = ?, image2 = ?, image3 = ? WHERE id = ?", (*images, product_id))
-    connection.commit()
-    connection.close()
+    saved_paths = []
+    try:
+        try:
+            cursor = connection.execute(
+                "INSERT INTO products (name, description, category, price, color, initials, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    name,
+                    description,
+                    category,
+                    price,
+                    form.get("color", "#d9c7bd"),
+                    "".join(word[0] for word in name.split()[:2]).upper(),
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
+            product_id = cursor.lastrowid
+            images = [None, None, None]
+            for slot, source in image_sources.items():
+                if source[0] == "url":
+                    images[slot - 1] = source[1]
+                    continue
+                image, extension = source[1:]
+                filename = f"product-{product_id}-{slot}-{uuid4().hex}{extension}"
+                image_path = UPLOAD_DIR / filename
+                saved_paths.append(image_path)
+                image.save(image_path)
+                images[slot - 1] = url_for("static", filename=f"uploads/{filename}")
+            connection.execute(
+                "UPDATE products SET image1 = ?, image2 = ?, image3 = ? WHERE id = ?",
+                (*images, product_id),
+            )
+            connection.commit()
+        except (OSError, sqlite3.Error):
+            connection.rollback()
+            for image_path in saved_paths:
+                image_path.unlink(missing_ok=True)
+            raise
+    finally:
+        connection.close()
     return redirect(url_for("admin.dashboard"))
 
 @admin_bp.post("/products/<int:product_id>/edit")
@@ -147,9 +243,61 @@ def edit_product(product_id):
     if not connection.execute("SELECT 1 FROM categories WHERE name = ?", (category,)).fetchone():
         connection.close()
         return redirect(url_for("admin.products"))
-    connection.execute("UPDATE products SET name = ?, description = ?, category = ?, price = ?, color = ? WHERE id = ?", (form.get("name", "").strip(), form.get("description", "").strip(), category, price, form.get("color", "#d9c7bd"), product_id))
-    connection.commit()
-    connection.close()
+    product = connection.execute(
+        "SELECT image1, image2, image3 FROM products WHERE id = ?", (product_id,)
+    ).fetchone()
+    if not product:
+        connection.close()
+        return "Product not found.", 404
+
+    try:
+        image_sources = product_image_inputs(form, request.files)
+    except ValueError as error:
+        connection.close()
+        return str(error), 400
+
+    updated_images = [product[f"image{slot}"] for slot in (1, 2, 3)]
+    saved_paths = []
+    try:
+        try:
+            for slot, source in image_sources.items():
+                if source[0] == "url":
+                    updated_images[slot - 1] = source[1]
+                    continue
+                image, extension = source[1:]
+                filename = f"product-{product_id}-{slot}-{uuid4().hex}{extension}"
+                image_path = UPLOAD_DIR / filename
+                saved_paths.append(image_path)
+                image.save(image_path)
+                updated_images[slot - 1] = url_for("static", filename=f"uploads/{filename}")
+
+            connection.execute(
+                "UPDATE products SET name = ?, description = ?, category = ?, price = ?, "
+                "color = ?, image1 = ?, image2 = ?, image3 = ? WHERE id = ?",
+                (
+                    form.get("name", "").strip(),
+                    form.get("description", "").strip(),
+                    category,
+                    price,
+                    form.get("color", "#d9c7bd"),
+                    *updated_images,
+                    product_id,
+                ),
+            )
+            connection.commit()
+        except (OSError, sqlite3.Error):
+            connection.rollback()
+            for image_path in saved_paths:
+                image_path.unlink(missing_ok=True)
+            raise
+
+        for slot, old_image_url in enumerate(
+            (product["image1"], product["image2"], product["image3"]), start=1
+        ):
+            if old_image_url != updated_images[slot - 1]:
+                remove_unreferenced_product_image(old_image_url, connection, product_id, slot)
+    finally:
+        connection.close()
     return redirect(url_for("admin.products"))
 
 @admin_bp.post("/products/<int:product_id>/delete")

@@ -11,7 +11,88 @@ function renderCart() {
   document.querySelectorAll('[data-cart-total]').forEach((node) => node.textContent = money(total));
   const target = document.querySelector('[data-cart-items]');
   if (!target) return;
-  target.innerHTML = cart.length ? cart.map((item) => `<article class="cart-item"><button class="remove-item remove-item-left" data-remove="${item.id}" aria-label="Remove ${item.name}">×</button><div class="cart-item-art" style="background:${item.color}">${item.initials}</div><div class="cart-item-info"><strong>${item.name}</strong><span>${money(item.price)}</span><div class="quantity"><button data-quantity="${item.id}" data-change="-1" aria-label="Decrease quantity">−</button><span>${item.quantity}</span><button data-quantity="${item.id}" data-change="1" aria-label="Increase quantity">+</button></div></div></article>`).join('') : '<div class="empty-cart"><span>◌</span><p>Your bag is waiting for something good.</p></div>';
+  target.replaceChildren();
+  if (!cart.length) {
+    target.innerHTML = '<div class="empty-cart"><span>◌</span><p>Your bag is waiting for something good.</p></div>';
+    return;
+  }
+  cart.forEach((item) => {
+    const row = document.createElement('article');
+    row.className = 'cart-item';
+
+    const removeButton = document.createElement('button');
+    removeButton.className = 'remove-item remove-item-left';
+    removeButton.dataset.remove = item.id;
+    removeButton.setAttribute('aria-label', `Remove ${item.name}`);
+    removeButton.textContent = '×';
+
+    const productLink = document.createElement('a');
+    productLink.className = 'cart-item-product-link';
+    productLink.href = `/product/${encodeURIComponent(item.id)}`;
+    productLink.setAttribute('aria-label', `View ${item.name}`);
+    const art = document.createElement('div');
+    art.className = 'cart-item-art';
+    art.style.backgroundColor = item.color || '#ddd';
+    if (item.image) {
+      const image = document.createElement('img');
+      image.src = item.image;
+      image.alt = item.name;
+      art.append(image);
+    } else {
+      art.textContent = item.initials || '';
+    }
+    productLink.append(art);
+
+    const info = document.createElement('div');
+    info.className = 'cart-item-info';
+    const nameLink = document.createElement('a');
+    nameLink.className = 'cart-item-name';
+    nameLink.href = productLink.href;
+    const name = document.createElement('strong');
+    name.textContent = item.name;
+    nameLink.append(name);
+    const price = document.createElement('span');
+    price.textContent = money(item.price);
+    const quantity = document.createElement('div');
+    quantity.className = 'quantity';
+    const decrease = document.createElement('button');
+    decrease.dataset.quantity = item.id;
+    decrease.dataset.change = '-1';
+    decrease.setAttribute('aria-label', 'Decrease quantity');
+    decrease.textContent = '−';
+    const count = document.createElement('span');
+    count.textContent = item.quantity;
+    const increase = document.createElement('button');
+    increase.dataset.quantity = item.id;
+    increase.dataset.change = '1';
+    increase.setAttribute('aria-label', 'Increase quantity');
+    increase.textContent = '+';
+    quantity.append(decrease, count, increase);
+    info.append(nameLink, price, quantity);
+    row.append(removeButton, productLink, info);
+    target.append(row);
+  });
+}
+
+async function hydrateCartImages() {
+  const cart = readCart();
+  const missingImageIds = [...new Set(cart.filter((item) => !item.image).map((item) => item.id))];
+  if (!missingImageIds.length) return;
+  try {
+    const response = await fetch(`/api/products/images?ids=${missingImageIds.map(encodeURIComponent).join(',')}`);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not load product images.');
+    let updated = false;
+    cart.forEach((item) => {
+      if (!item.image && result[item.id]) {
+        item.image = result[item.id];
+        updated = true;
+      }
+    });
+    if (updated) writeCart(cart);
+  } catch (error) {
+    console.error('Could not load shopping bag product images:', error);
+  }
 }
 
 function showToast(message) {
@@ -39,6 +120,11 @@ async function openInvoice(orderId) {
     modal.querySelector('[data-invoice-email]').textContent = invoice.email;
     modal.querySelector('[data-invoice-address]').textContent = invoice.address;
     modal.querySelector('[data-invoice-date]').textContent = `${invoice.created_at.slice(0, 10)} · ${invoice.status}`;
+    modal.querySelector('[data-invoice-payment]').textContent = {
+      saved_card: 'Saved card (demo)',
+      khqr: 'KHQR (demo)',
+      unrecorded: 'Not recorded'
+    }[invoice.payment_method] || 'Not recorded';
     modal.querySelector('[data-invoice-total]').textContent = money(invoice.total);
     modal.querySelector('[data-invoice-status]').textContent = `Order #${invoice.id}`;
     const items = modal.querySelector('[data-invoice-items]');
@@ -115,7 +201,12 @@ document.addEventListener('click', (event) => {
   if (addButton) {
     const product = JSON.parse(addButton.dataset.addToCart);
     const cart = readCart(); const existing = cart.find((item) => item.id === product.id);
-    existing ? existing.quantity++ : cart.push({...product, quantity: 1});
+    if (existing) {
+      existing.quantity++;
+      existing.image = product.image || existing.image;
+    } else {
+      cart.push({...product, quantity: 1});
+    }
     writeCart(cart); showToast(`${product.name} added to your bag`);
   }
   if (event.target.closest('[data-cart-open]')) toggleDrawer(true);
@@ -142,8 +233,8 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('submit', async (event) => {
   if (!event.target.matches('[data-checkout-form]')) return;
   event.preventDefault();
-  const form = new FormData(event.target); const cart = readCart();
-  const response = await fetch('/api/purchases', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ customer: Object.fromEntries(form), items: cart.map(({id, quantity}) => ({id, quantity})) }) });
+  const form = Object.fromEntries(new FormData(event.target)); const cart = readCart();
+  const response = await fetch('/api/purchases', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ customer: form, payment_method: form.payment_method, items: cart.map(({id, quantity}) => ({id, quantity})) }) });
   const result = await response.json();
   if (response.status === 401 && result.login_url) return window.location.assign(result.login_url);
   if (!response.ok) return showToast(result.error || 'Something went wrong');
@@ -155,12 +246,70 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!form) return;
   const buyNowId = Number(form.dataset.buyNowId);
   const isBuyNow = Number.isInteger(buyNowId) && buyNowId > 0;
-  const cart = isBuyNow ? [{id: buyNowId, quantity: 1}] : readCart();
-  const total = isBuyNow ? 0 : cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cart = isBuyNow ? [{
+    id: buyNowId,
+    name: form.dataset.buyNowName,
+    price: Number(form.dataset.buyNowPrice),
+    image: form.dataset.buyNowImage,
+    color: form.dataset.buyNowColor,
+    initials: form.dataset.buyNowInitials,
+    quantity: 1
+  }] : readCart();
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const summary = document.querySelector('[data-page-summary]');
   const totalNode = document.querySelector('[data-page-total]');
-  if (!isBuyNow && summary) summary.innerHTML = cart.length ? cart.map((item) => `<div class="summary-item"><span>${item.name} × ${item.quantity}</span><strong>${money(item.price * item.quantity)}</strong></div>`).join('') : '<p class="muted-copy">Your bag is empty.</p>';
-  if (!isBuyNow && totalNode) totalNode.textContent = money(total);
+  const renderSummary = () => {
+    if (!summary) return;
+    summary.replaceChildren();
+    if (!cart.length) {
+      const empty = document.createElement('p');
+      empty.className = 'muted-copy';
+      empty.textContent = 'Your bag is empty.';
+      summary.append(empty);
+      return;
+    }
+    cart.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'summary-item';
+      const product = document.createElement('div');
+      product.className = 'summary-product';
+      const image = document.createElement('div');
+      image.className = 'summary-product-image';
+      image.style.backgroundColor = item.color || '#ddd';
+      if (item.image) {
+        const img = document.createElement('img');
+        img.src = item.image;
+        img.alt = item.name;
+        image.append(img);
+      } else {
+        image.textContent = item.initials || '';
+      }
+      const name = document.createElement('span');
+      name.textContent = `${item.name} × ${item.quantity}`;
+      const price = document.createElement('strong');
+      price.textContent = money(item.price * item.quantity);
+      product.append(image, name);
+      row.append(product, price);
+      summary.append(row);
+    });
+  };
+  renderSummary();
+  if (totalNode) totalNode.textContent = money(total);
+  if (!isBuyNow) {
+    const missingImageIds = [...new Set(cart.filter((item) => !item.image).map((item) => item.id))];
+    if (missingImageIds.length) {
+      fetch(`/api/products/images?ids=${missingImageIds.map(encodeURIComponent).join(',')}`)
+        .then((response) => {
+          if (!response.ok) throw new Error('Could not load checkout product images.');
+          return response.json();
+        })
+        .then((images) => {
+          cart.forEach((item) => { item.image = item.image || images[item.id]; });
+          renderSummary();
+        })
+        .catch((error) => console.error(error));
+    }
+  }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!cart.length) return showToast('Your bag is empty');
@@ -170,7 +319,8 @@ document.addEventListener('DOMContentLoaded', () => {
     button.disabled = true;
     button.textContent = 'Processing purchase...';
     try {
-      const response = await fetch('/api/purchases', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ customer: Object.fromEntries(new FormData(form)), items: cart.map(({id, quantity}) => ({id, quantity})) }) });
+      const customer = Object.fromEntries(new FormData(form));
+      const response = await fetch('/api/purchases', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ customer, payment_method: customer.payment_method, items: cart.map(({id, quantity}) => ({id, quantity})) }) });
       const result = await response.json();
       if (response.status === 401 && result.login_url) {
         window.location.assign(result.login_url);
@@ -182,6 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (!isBuyNow) localStorage.removeItem(cartKey);
       renderCart();
+      hydrateCartImages();
       document.querySelector('[data-purchase-message]').textContent = result.message;
       document.querySelector('[data-checkout-layout]').hidden = true;
       const confirmation = document.querySelector('[data-purchase-confirmation]');

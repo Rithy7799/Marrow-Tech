@@ -17,7 +17,7 @@
         <div class="detail-copy">
             <span class="eyebrow">{{ product.category }} / Morrow Tech</span>
             <h2>{{ product.name }}</h2>
-            <p class="detail-price" style="color: red; font-size: 24px;">{{ product.price|currency }}</p>
+            <p class="detail-price" style="color: red; font-size: 25px;">{{ product.price|currency }}</p>
             <p class="detail-description">{{ product.description }} Designed with useful simplicity and made to become
                 part of your daily rhythm.</p>
             <div class="detail-actions">
@@ -29,10 +29,10 @@
                     <span>→</span></a>
                 {% endif %}
                 <button class="button button-light"
-                    data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials}|tojson }}'>Add
+                    data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials, "image": product.image1}|tojson }}'>Add
                     to bag <span>+</span></button>
                 <form method="post" action="{{ url_for('toggle_favorite', product_id=product.id) }}"><button
-                        class="favorite-button {% if is_favorite %}is-favorite{% endif %}" type="submit">{{ '♥ Saved' if
+                        class="favorite-button {% if is_favorite %}is-favorite{% endif %} text-danger" type="submit">{{ '♥ Saved' if
                         is_favorite else '♡ Save to favorites' }}</button></form>
             </div>
             <div class="rating-summary"><strong>{% if average %}{{ average }} / 5{% else %}No ratings yet{% endif
@@ -90,7 +90,7 @@
                 </div>
                 <div class="product-card-actions">
                     <p>{{ recommendation.description }}</p><button class="add-button"
-                        data-add-to-cart='{{ {"id": recommendation.id, "name": recommendation.name, "price": recommendation.price, "color": recommendation.color, "initials": recommendation.initials}|tojson }}'
+                        data-add-to-cart='{{ {"id": recommendation.id, "name": recommendation.name, "price": recommendation.price, "color": recommendation.color, "initials": recommendation.initials, "image": recommendation.image1}|tojson }}'
                         aria-label="Add {{ recommendation.name }} to bag">+</button>
                 </div>
             </article>{% endfor %}

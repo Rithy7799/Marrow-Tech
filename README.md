@@ -60,12 +60,27 @@ python app.py
 
 5. Open your browser and navigate to `http://127.0.0.1:8555`
 
-## Demo Credentials
+## Development Demo Credentials
 
-The app comes with seeded demo accounts:
+Demo accounts and sample products are seeded into an empty database during local development:
 
 - **Admin**: `admin@morrow.test` / `admin123`
 - **Staff**: `staff@morrow.test` / `staff123`
+
+Demo data is disabled when `APP_ENV=production`.
+
+## Production Deployment
+
+The included `Procfile` runs the app with Gunicorn on a Linux host or platform that supports Procfiles. Configure these environment variables in the host's dashboard:
+
+- `APP_ENV=production`
+- `SECRET_KEY` — a long, random value. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` and keep it out of source control.
+- `DATABASE_PATH` — an absolute path on a persistent disk, such as `/data/shop.db`.
+- `PORT` — normally supplied by the hosting platform; the Procfile defaults to `8000`.
+
+Keep the directory `static/uploads` on persistent storage too; product images and profile photos are saved there. Back up the database and uploads together. For a fresh production database, run `flask --app app create-admin` as a one-off command after configuring the environment and persistent disk. The command prompts for the administrator's name, email, and a password of at least 12 characters. Add products and categories from the admin desk after signing in.
+
+When moving an existing store, copy its database and `static/uploads` contents to the host's persistent storage before starting the service. Before making it public, replace or remove any development demo accounts in that database—the documented demo passwords are public. Enforce HTTPS at the hosting platform or reverse proxy; production session cookies are marked secure.
 
 ## Project Structure
 
