@@ -305,9 +305,20 @@ def delete_product(product_id):
     access_error = admin_access_required()
     if access_error: return access_error
     connection = get_db()
-    connection.execute("DELETE FROM products WHERE id = ?", (product_id,))
-    connection.commit()
-    connection.close()
+    try:
+        product = connection.execute(
+            "SELECT image1, image2, image3 FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        if not product:
+            return redirect(url_for("admin.products"))
+        connection.execute("DELETE FROM favorites WHERE product_id = ?", (product_id,))
+        connection.execute("DELETE FROM reviews WHERE product_id = ?", (product_id,))
+        connection.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        connection.commit()
+        for slot in (1, 2, 3):
+            remove_unreferenced_product_image(product[f"image{slot}"], connection, product_id, slot)
+    finally:
+        connection.close()
     return redirect(url_for("admin.products"))
 
 @admin_bp.post("/orders/<int:order_id>/status")

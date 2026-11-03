@@ -14,7 +14,7 @@
                 else %}<span>{{ account.name[:1].upper() }}</span>{% endif %}</div>
             <div><span class="eyebrow">Profile settings</span>
                 <h2>Edit your details</h2>
-            </div>
+            </div>{% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
             <form method="post" action="{{ url_for('update_profile') }}" enctype="multipart/form-data"
                 class="profile-form"><label>Full name<input name="name" required
                         value="{{ account.name }}"></label><label>Email<input name="email" type="email" required

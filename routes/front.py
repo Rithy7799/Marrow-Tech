@@ -1,13 +1,49 @@
 import ast
 import json
 import re
-from pathlib import Path
+import sqlite3
+from pathlib import Path, PurePosixPath
+from uuid import uuid4
 from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
 from urllib.parse import urlsplit
-from werkzeug.utils import secure_filename
 from store import PAGE_SIZE, UPLOAD_DIR, get_db
 
 front_bp = Blueprint("front", __name__)
+
+
+def remove_old_avatar(avatar_url, connection, user_id):
+    """Delete a replaced profile photo if it is this user's upload and nothing else uses it."""
+    if not avatar_url:
+        return
+    parsed_url = urlsplit(avatar_url)
+    image_path = PurePosixPath(parsed_url.path)
+    filename = image_path.name
+    if (
+        parsed_url.scheme
+        or parsed_url.netloc
+        or image_path.parent != PurePosixPath("/static/uploads")
+        or not (filename.startswith(f"user-{user_id}-profile.") or filename.startswith(f"user-{user_id}-profile-"))
+    ):
+        return
+    if connection.execute(
+        "SELECT 1 FROM users WHERE avatar = ? UNION ALL "
+        "SELECT 1 FROM products WHERE image1 = ? OR image2 = ? OR image3 = ? LIMIT 1",
+        (avatar_url, avatar_url, avatar_url, avatar_url),
+    ).fetchone():
+        return
+    upload_directory = UPLOAD_DIR.resolve()
+    file_path = (upload_directory / filename).resolve()
+    if file_path.parent == upload_directory:
+        file_path.unlink(missing_ok=True)
+
+
+def render_profile(error=None, status=200):
+    connection = get_db()
+    account = connection.execute("SELECT * FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    orders = connection.execute("SELECT * FROM orders WHERE email = ? ORDER BY id DESC", (session["user"]["email"],)).fetchall()
+    favorites = connection.execute("SELECT products.* FROM favorites JOIN products ON products.id = favorites.product_id WHERE favorites.user_id = ?", (session["user"]["id"],)).fetchall()
+    connection.close()
+    return render_template("profile.html", account=account, orders=orders, favorites=favorites, error=error), status
 
 @front_bp.route("/")
 def storefront():
@@ -92,12 +128,7 @@ def checkout():
 def profile():
     if not session.get("user"):
         return redirect(url_for("auth.login"))
-    connection = get_db()
-    account = connection.execute("SELECT * FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
-    orders = connection.execute("SELECT * FROM orders WHERE email = ? ORDER BY id DESC", (session["user"]["email"],)).fetchall()
-    favorites = connection.execute("SELECT products.* FROM favorites JOIN products ON products.id = favorites.product_id WHERE favorites.user_id = ?", (session["user"]["id"],)).fetchall()
-    connection.close()
-    return render_template("profile.html", account=account, orders=orders, favorites=favorites)
+    return render_profile()
 
 @front_bp.route("/notifications")
 def notifications_page():
@@ -173,10 +204,21 @@ def product_images():
 def update_profile():
     if not session.get("user"):
         return redirect(url_for("auth.login"))
+    user_id = session["user"]["id"]
     connection = get_db()
-    existing = connection.execute("SELECT * FROM users WHERE id = ?", (session["user"]["id"],)).fetchone()
+    existing = connection.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not existing:
+        connection.close()
+        session.pop("user", None)
+        return redirect(url_for("auth.login"))
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
+    if not name or not email or "@" not in email:
+        connection.close()
+        return render_profile("Enter your name and a valid email address.", 400)
+    if connection.execute("SELECT 1 FROM users WHERE email = ? AND id != ?", (email, user_id)).fetchone():
+        connection.close()
+        return render_profile("Another account already uses that email address.", 400)
     avatar = request.form.get("avatar", existing["avatar"] or "").strip()
     card_last4 = existing["card_last4"]
     card_number = request.form.get("card_number", "").strip()
@@ -184,21 +226,33 @@ def update_profile():
         card_digits = re.sub(r"[^0-9]", "", card_number)
         if not 13 <= len(card_digits) <= 19:
             connection.close()
-            return "Enter a valid card number.", 400
+            return render_profile("Enter a valid card number.", 400)
         card_last4 = card_digits[-4:]
+    new_image_path = None
     profile_image = request.files.get("profile_image")
     if profile_image and profile_image.filename:
         extension = Path(profile_image.filename).suffix.lower()
         if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
             connection.close()
-            return "Unsupported profile image format.", 400
-        filename = secure_filename(f"user-{session['user']['id']}-profile{extension}")
-        profile_image.save(UPLOAD_DIR / filename)
+            return render_profile("Profile photos must be PNG, JPEG, or WebP files.", 400)
+        # A new name for every upload, so browsers don't keep showing the cached old photo.
+        filename = f"user-{user_id}-profile-{uuid4().hex}{extension}"
+        new_image_path = UPLOAD_DIR / filename
+        profile_image.save(new_image_path)
         avatar = url_for("static", filename=f"uploads/{filename}")
-    connection.execute("UPDATE users SET name = ?, email = ?, phone = ?, address = ?, avatar = ?, card_name = ?, card_last4 = ?, card_expiry = ? WHERE id = ?", (name, email, request.form.get("phone", existing["phone"] or "").strip(), request.form.get("address", existing["address"] or "").strip(), avatar, request.form.get("card_name", existing["card_name"] or "").strip(), card_last4, request.form.get("card_expiry", existing["card_expiry"] or "").strip(), session["user"]["id"]))
-    connection.commit()
+    try:
+        connection.execute("UPDATE users SET name = ?, email = ?, phone = ?, address = ?, avatar = ?, card_name = ?, card_last4 = ?, card_expiry = ? WHERE id = ?", (name, email, request.form.get("phone", existing["phone"] or "").strip(), request.form.get("address", existing["address"] or "").strip(), avatar, request.form.get("card_name", existing["card_name"] or "").strip(), card_last4, request.form.get("card_expiry", existing["card_expiry"] or "").strip(), user_id))
+        connection.commit()
+    except sqlite3.IntegrityError:
+        connection.rollback()
+        connection.close()
+        if new_image_path:
+            new_image_path.unlink(missing_ok=True)
+        return render_profile("Another account already uses that email address.", 400)
+    if existing["avatar"] != avatar:
+        remove_old_avatar(existing["avatar"], connection, user_id)
     connection.close()
-    session["user"].update({"name": name, "email": email})
+    session["user"] = {**session["user"], "name": name, "email": email}
     return redirect(url_for("front.profile"))
 
 @front_bp.post("/product/<int:product_id>/favorite")
@@ -216,8 +270,15 @@ def toggle_favorite(product_id):
 def add_review(product_id):
     if not session.get("user"):
         return redirect(url_for("auth.login"))
+    try:
+        rating = int(request.form.get("rating", 5))
+    except (TypeError, ValueError):
+        return "Choose a rating from 1 to 5.", 400
     connection = get_db()
-    connection.execute("INSERT INTO reviews (user_id, product_id, rating, comment, created_at) VALUES (?, ?, ?, ?, datetime('now'))", (session["user"]["id"], product_id, max(1, min(5, int(request.form.get("rating", 5)))), request.form.get("comment", "").strip()))
+    if not connection.execute("SELECT 1 FROM products WHERE id = ?", (product_id,)).fetchone():
+        connection.close()
+        return redirect(url_for("front.storefront"))
+    connection.execute("INSERT INTO reviews (user_id, product_id, rating, comment, created_at) VALUES (?, ?, ?, ?, datetime('now'))", (session["user"]["id"], product_id, max(1, min(5, rating)), request.form.get("comment", "").strip()))
     connection.commit()
     connection.close()
     return redirect(url_for("front.product_detail", product_id=product_id))

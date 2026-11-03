@@ -4,3 +4,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Local database (production uses DATABASE_PATH on a persistent disk)
+shop.db
+*.db-journal
