@@ -3,7 +3,7 @@
 {% block content %}
 <main class="admin-page">
     <div class="admin-top">
-        <div><span class="eyebrow">Morrow Tech / Control room / {{ current_user.role }}</span>
+        <div><span class="eyebrow">MorrowTech / Control room / {{ current_user.role }}</span>
             <h1>Good morning, <em>{{ current_user.name.split(' ')[0] }}.</em></h1>
         </div><a class="button button-light" href="{{ url_for('storefront') }}">View storefront <span>↗</span></a>
     </div>

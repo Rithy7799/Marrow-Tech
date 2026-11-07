@@ -1,0 +1,22 @@
+<article class="product-card sale-card" data-category="{{ product.category }}">
+    <a href="{{ url_for('product_detail', product_id=product.id) }}">
+        <div class="product-art" style="--product-color: {{ product.color }}">
+            {% if product.image1 %}<img src="{{ product.image1 }}" alt="{{ product.name }}">
+            {% else %}<span>{{ product.initials }}</span><div class="product-orbit"></div>{% endif %}
+            <b class="sale-badge">SALE</b>
+        </div>
+    </a>
+    <div class="product-meta">
+        <div>
+            <span class="product-category">{{ product.category }}</span>
+            <h3><a href="{{ url_for('product_detail', product_id=product.id) }}">{{ product.name }}</a></h3>
+        </div>
+        <strong>{{ product.price|currency }}</strong>
+    </div>
+    <div class="product-card-actions">
+        <p>{{ product.description }}</p>
+        <button class="add-button"
+            data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials, "image": product.image1}|tojson }}'
+            aria-label="Add {{ product.name }} to bag" title="Add {{ product.name }} to bag">+</button>
+    </div>
+</article>

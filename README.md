@@ -1,6 +1,6 @@
-# Marrow Tech
+# MorrowTech
 
-Marrow Tech is an online store for everyday tech, built with Flask and SQLite. Shoppers can browse and search the catalog, keep a bag, check out, and track their orders. Store staff run the catalog, categories, orders, and accounts from an admin desk.
+MorrowTech is an online store for everyday tech, built with Flask and SQLite. Shoppers can browse and search the catalog, keep a bag, check out, and track their orders. Store staff run the catalog, categories, orders, and accounts from an admin desk.
 
 **Live site:** _add the hosted URL here_
 

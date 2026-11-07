@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Your profile — Morrow Tech{% endblock %}
+{% block title %}Your profile — MorrowTech{% endblock %}
 {% block content %}<main class="profile-page">
     <div class="profile-heading">
         <div><span class="eyebrow">Your account / {{ account.role }}</span>
@@ -50,13 +50,9 @@
         </section>
     </div>
     <div class="profile-columns">
-        <section class="profile-panel"><span class="eyebrow">Saved for later</span>
-            <h2>Favorites</h2>{% if favorites %}<div class="favorite-grid">{% for product in favorites %}<a
-                    class="favorite-card" href="{{ url_for('product_detail', product_id=product.id) }}">
-                    <div class="mini-art" style="background:{{ product.color }}">{% if product.image1 %}<img
-                            src="{{ product.image1 }}" alt="{{ product.name }}">{% else %}{{ product.initials }}{% endif %}</div><strong>{{
-                        product.name }}</strong><span>{{ product.price|currency }}</span>
-                </a>{% endfor %}</div>{% else %}<p class="muted-copy">Your saved pieces will appear here.</p>{% endif %}
+        <section class="profile-panel" id="favorites"><span class="eyebrow">Saved for later</span>
+            <h2>Favorites</h2>{% if favorites %}<div class="favorite-grid">{% for product in favorites %}{% include
+                "_product_card.html" %}{% endfor %}</div>{% else %}<p class="muted-copy">Your saved pieces will appear here.</p>{% endif %}
         </section>
         <section class="profile-panel"><span class="eyebrow">Your history</span>
             <h2>Orders</h2>{% if orders %}{% for order in orders %}<div class="profile-order">

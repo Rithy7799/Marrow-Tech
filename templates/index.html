@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Morrow Tech — Smart electronics, better prices{% endblock %}
+{% block title %}MorrowTech — Smart electronics, better prices{% endblock %}
 {% block content %}
 <main>
     <section class="hero" id="story">
@@ -45,25 +45,7 @@
             category in categories %}<a class="filter-button"
                 href="{{ url_for('category', category_name=category.category) }}">{{ category.category }}</a>{% endfor
             %}</div>
-        <div class="product-grid">{% for product in products %}<article class="product-card sale-card"
-                data-category="{{ product.category }}"><a href="{{ url_for('product_detail', product_id=product.id) }}">
-                    <div class="product-art" style="--product-color: {{ product.color }}">{% if product.image1 %}<img
-                            src="{{ product.image1 }}" alt="{{ product.name }}">{% else %}<span>{{ product.initials
-                            }}</span>
-                        <div class="product-orbit"></div>{% endif %}<b class="sale-badge">SALE</b>
-                    </div>
-                </a>
-                <div class="product-meta">
-                    <div><span class="product-category">{{ product.category }}</span>
-                        <h3><a href="{{ url_for('product_detail', product_id=product.id) }}">{{ product.name }}</a></h3>
-                    </div><strong>{{ product.price|currency }}</strong>
-                </div>
-                <div class="product-card-actions">
-                    <p>{{ product.description }}</p><button class="add-button"
-                        data-add-to-cart='{{ {"id": product.id, "name": product.name, "price": product.price, "color": product.color, "initials": product.initials, "image": product.image1}|tojson }}'
-                        aria-label="Add {{ product.name }} to bag">+</button>
-                </div>
-            </article>{% endfor %}</div>
+        <div class="product-grid">{% for product in products %}{% include "_product_card.html" %}{% endfor %}</div>
         <div class="pagination">{% if page > 1 %}<a href="{{ url_for('storefront', page=page - 1, q=query) }}#shop">←
                 Previous</a>{% endif %}<span>Page {{ page }} of {{ total_pages }}</span>{% if page < total_pages %}<a
                 href="{{ url_for('storefront', page=page + 1, q=query) }}#shop">Next →</a>{% endif %}</div>
