@@ -158,4 +158,6 @@ SQLite with six tables:
 
 ## License
 
-MIT
+This project is available for personal testing and learning only. Business or
+other commercial use requires prior written approval from the copyright
+holder. See [LICENSE](./LICENSE) for the full terms.
