@@ -1878,6 +1878,7 @@ select:focus {
 }
 
 .product-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -3434,6 +3435,45 @@ body {
     object-fit: contain;
     object-position: center;
     background: var(--product-color, #f1f8f4)
+}
+
+.product-favorite-form {
+    position: absolute;
+    z-index: 1;
+    top: 12px;
+    right: 12px
+}
+
+.product-favorite-button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(15, 91, 51, .12);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .94);
+    color: var(--market-green-dark, #087443);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease
+}
+
+.product-favorite-button:hover {
+    border-color: #b9ddc7;
+    background: #f7faf8
+}
+
+.product-favorite-button.is-favorite {
+    border-color: #efc6c6;
+    background: #fff5f5;
+    color: #a33a3a
+}
+
+.product-favorite-button:focus-visible {
+    outline: 2px solid var(--green, #087443);
+    outline-offset: 2px
 }
 
 .product-card .product-meta,

@@ -351,11 +351,22 @@ def currency(value):
 def current_user_context():
     user = session.get("user")
     notifications = []
+    favorite_product_ids = []
     if user:
         connection = get_db()
         account = connection.execute("SELECT id, name, email, role, avatar, card_name, card_last4, card_expiry FROM users WHERE id = ?", (user["id"],)).fetchone()
         if account:
             user = dict(account)
+            favorite_product_ids = [
+                favorite["product_id"]
+                for favorite in connection.execute(
+                    "SELECT product_id FROM favorites WHERE user_id = ?", (user["id"],)
+                ).fetchall()
+            ]
         notifications = connection.execute("SELECT id, total, status, created_at FROM orders WHERE email = ? ORDER BY id DESC LIMIT 5", (user["email"],)).fetchall()
         connection.close()
-    return {"current_user": user, "notifications": notifications}
+    return {
+        "current_user": user,
+        "notifications": notifications,
+        "favorite_product_ids": favorite_product_ids,
+    }
