@@ -1,6 +1,7 @@
-<article class="product-card sale-card" data-category="{{ product.category }}">
+<article class="product-card sale-card" data-category="{{ product.category }}"
+    style="--product-color: {{ product.color }}">
     <a href="{{ url_for('product_detail', product_id=product.id) }}">
-        <div class="product-art" style="--product-color: {{ product.color }}">
+        <div class="product-art">
             {% if product.image1 %}<img src="{{ product.image1 }}" alt="{{ product.name }}">
             {% else %}<span>{{ product.initials }}</span><div class="product-orbit"></div>{% endif %}
             <b class="sale-badge">SALE</b>

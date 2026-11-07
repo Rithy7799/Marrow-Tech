@@ -57,6 +57,8 @@ Then open <http://127.0.0.1:8555>.
 
 The database (`shop.db`) and its tables are created on first run, and existing databases get any new columns added automatically. In development, an empty catalog is filled with 100 sample products and two demo accounts:
 
+The seeded catalog uses example electronics listings. Its image links are representative, category-relevant Unsplash photos, not photos of each exact model. Descriptions and prices are illustrative; verify product details, pricing, availability, and image suitability before offering items for sale.
+
 | Account | Email               | Password   |
 |---------|---------------------|------------|
 | Admin   | `admin@morrow.test` | `admin123` |
