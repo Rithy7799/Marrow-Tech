@@ -110,6 +110,14 @@ h2 em {
     font-weight: 400
 }
 
+.brand-logo {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
+    object-fit: contain;
+    border-radius: 6px
+}
+
 .main-nav {
     display: flex;
     gap: 34px;
@@ -1207,6 +1215,11 @@ select:focus {
         width: 27px;
         height: 27px
     }
+
+    .site-header .brand-logo {
+        width: 38px;
+        height: 38px
+    }
 }
 
 .listing-page,
@@ -1969,6 +1982,11 @@ select:focus {
 
 .site-footer .brand {
     font-size: 14px
+}
+
+.site-footer .brand-logo {
+    width: 38px;
+    height: 38px
 }
 
 @media(max-width:900px) {

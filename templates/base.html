@@ -11,7 +11,7 @@
         href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=10) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=11) }}">
     {% block head %}{% endblock %}
 </head>
 
@@ -19,7 +19,8 @@
     <div class="market-strip"><span>Welcome to MorrowTech</span><span>Free shipping over $75</span><span>Today's
             deals</span><span>Help center</span></div>
     <header class="site-header">
-        <a class="brand" href="{{ url_for('storefront') }}"><span class="brand-mark">M</span><span>MorrowTech
+        <a class="brand" href="{{ url_for('storefront') }}"><img class="brand-logo"
+                src="{{ url_for('static', filename='logo/brand.jpg') }}" alt=""><span>MorrowTech
                 <small>Marketplace</small></span></a>
         <form class="market-search" action="{{ url_for('storefront') }}#shop"><input name="q"
                 placeholder="Search products, brands and more"><button type="submit" aria-label="Search"><svg
@@ -127,7 +128,8 @@
         </section>
     </div>
     <footer class="site-footer">
-        <div class="brand"><span class="brand-mark">M</span><span>MorrowTech <small>Marketplace</small></span></div>
+        <div class="brand"><img class="brand-logo" src="{{ url_for('static', filename='logo/brand.jpg') }}"
+                alt=""><span>MorrowTech <small>Marketplace</small></span></div>
         <nav class="footer-links" aria-label="Footer navigation"><a href="{{ url_for('storefront') }}#shop">Deals</a><a
                 href="{{ url_for('storefront') }}#shop">Categories</a><a href="{{ url_for('about') }}">About us</a>{% if current_user %}<a
                 href="{{ url_for('profile') }}">My account</a>{% else %}<a href="{{ url_for('login') }}">Log in</a>{%
